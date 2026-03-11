@@ -113,7 +113,7 @@ void TraceRT(sockaddr_in destination, bool resolveNames)
 
         for (int probe = 0; probe < 3; probe++)
         {
-            icmp->seq = ttl * 3 + probe;
+            icmp->seq = (ttl - 1) * 3 + probe;
             icmp->checksum = 0;
             icmp->checksum = CalculateChecksum((unsigned short*)sendBuffer, sizeof(sendBuffer));
 
@@ -137,7 +137,6 @@ void TraceRT(sockaddr_in destination, bool resolveNames)
                 auto end = chrono::high_resolution_clock::now();
                 double ms = chrono::duration<double, milli>(end - start).count();
 
-                // IP header length
                 int ipHeaderLen = (recvBuffer[0] & 0x0F) * 4;
 
                 ICMPHeader* icmpReply = (ICMPHeader*)(recvBuffer + ipHeaderLen);
