@@ -113,7 +113,7 @@ void TraceRT(sockaddr_in destination, bool resolveNames)
 
         for (int probe = 0; probe < 3; probe++)
         {
-            icmp->seq = (ttl - 1) * 3 + probe;
+            icmp->seq = htons((ttl - 1) * 3 + probe);
             icmp->checksum = 0;
             icmp->checksum = CalculateChecksum((unsigned short*)sendBuffer, sizeof(sendBuffer));
 
