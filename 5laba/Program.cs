@@ -20,7 +20,6 @@ namespace FileStorageConsole
 
             Console.WriteLine("Файловое хранилище запущено");
             Console.WriteLine("Адрес: http://127.0.0.2:5001 /");
-            Console.WriteLine("Для остановки нажмите Ctrl+C");
             Console.WriteLine();
 
             while (true)
