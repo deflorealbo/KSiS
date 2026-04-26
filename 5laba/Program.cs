@@ -38,80 +38,19 @@ namespace FileStorageConsole
             try
             {
                 string method = request.HttpMethod.ToUpperInvariant();
-                string path = request.Url.AbsolutePath.TrimStart('/');
+                string path = WebUtility.UrlDecode(request.Url.AbsolutePath).TrimStart('/');
 
-                if (method == "GET")
-                {
-                    if (service.ExistsAsFile(path))
-                    {
-                        service.ServeFile(path, response);
-                        response.StatusCode = 200;
-                    }
-                    else if (service.ExistsAsDirectory(path) || string.IsNullOrEmpty(path))
-                    {
-                        var files = service.GetListOfFiles(path);
-                        string json = JsonSerializer.Serialize(files);
-                        byte[] buffer = Encoding.UTF8.GetBytes(json);
+                
+                var headers = request.Headers.AllKeys
+                    .ToDictionary(k => k!, k => request.Headers[k]!);
 
-                        response.ContentType = "application/json; charset=utf-8";
-                        response.ContentLength64 = buffer.Length;
-                        response.OutputStream.Write(buffer, 0, buffer.Length);
-                        response.StatusCode = 200;
-                    }
-                    else
-                    {
-                        response.StatusCode = 404;
-                    }
-                }
-                else if (method == "HEAD")
-                {
-                    if (service.ExistsAsFile(path))
-                    {
-                        service.SendFileInfo(path, response);
-                        response.StatusCode = 200;
-                    }
-                    else
-                    {
-                        response.StatusCode = 404;
-                    }
-                }
-                else if (method == "PUT")
-                {
-                    string? copyFrom = request.Headers["X-Copy-From"];
-                    if (!string.IsNullOrEmpty(copyFrom))
-                    {
-                        
-                        copyFrom = copyFrom.TrimStart('/');
-                        service.CopyFile(copyFrom, path);
-                        response.StatusCode = 200;
-                    }
-                    else
-                    {
-                        
-                        if (request.ContentLength64 <= 0)
-                        {
-                            response.StatusCode = 400;
-                        }
-                        else
-                        {
-                            service.UploadFile(path, request.InputStream);
-                            response.StatusCode = 201; // Created
-                        }
-                    }
-                }
-                else if (method == "DELETE")
-                {
-                    service.Delete(path);
-                    response.StatusCode = 204; // No Content
-                }
-                else
-                {
-                    response.StatusCode = 405; // Method Not Allowed
-                }
+                using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+                string body = reader.ReadToEnd();
+
+                
+
+                RouteRequest(method, path, headers, body, service, response);
             }
-            catch (FileNotFoundException) { response.StatusCode = 404; }
-            catch (DirectoryNotFoundException) { response.StatusCode = 404; }
-            catch (UnauthorizedAccessException) { response.StatusCode = 403; }
             catch (Exception ex)
             {
                 Console.WriteLine($"Ошибка: {ex.Message}");
@@ -120,6 +59,111 @@ namespace FileStorageConsole
             finally
             {
                 response.Close();
+            }
+        }
+        private static void RouteRequest(
+    string method,
+    string path,
+    Dictionary<string, string> headers,
+    string body,
+    FileStorageService service,
+    HttpListenerResponse response)
+        {
+            try
+            {
+                switch (method)
+                {
+                    case "GET":
+                        HandleGet(path, service, response);
+                        break;
+
+                    case "PUT":
+                        HandlePut(path, headers, body, service, response);
+                        break;
+
+                    case "DELETE":
+                        HandleDelete(path, service, response);
+                        break;
+
+                    case "HEAD":
+                        HandleHead(path, service, response);
+                        break;
+
+                    default:
+                        response.StatusCode = 405;
+                        break;
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                response.StatusCode = 404;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                response.StatusCode = 403;
+            }
+        }
+        private static void HandleGet(string path, FileStorageService service, HttpListenerResponse response)
+        {
+            if (service.ExistsAsFile(path))
+            {
+                service.ServeFile(path, response);
+                response.StatusCode = 200;
+            }
+            else if (service.ExistsAsDirectory(path) || string.IsNullOrEmpty(path))
+            {
+                var files = service.GetListOfFiles(path);
+                string json = JsonSerializer.Serialize(files);
+                byte[] buffer = Encoding.UTF8.GetBytes(json);
+
+                response.ContentType = "application/json";
+                response.ContentLength64 = buffer.Length;
+                response.OutputStream.Write(buffer, 0, buffer.Length);
+                response.StatusCode = 200;
+            }
+            else
+            {
+                response.StatusCode = 404;
+            }
+        }
+        private static void HandlePut(string path, Dictionary<string, string> headers, string body,
+    FileStorageService service, HttpListenerResponse response)
+        {
+            if (headers.TryGetValue("X-Copy-From", out var copyFrom))
+            {
+                copyFrom = copyFrom.TrimStart('/');
+                service.CopyFile(copyFrom, path);
+                response.StatusCode = 201;
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(body))
+                {
+                    response.StatusCode = 400;
+                }
+                else
+                {
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(body));
+                    service.UploadFile(path, stream);
+                    response.StatusCode = 201;
+                }
+            }
+        }
+        private static void HandleDelete(string path, FileStorageService service, HttpListenerResponse response)
+        {
+            service.Delete(path);
+            response.StatusCode = 204;
+        }
+        private static void HandleHead(string path, FileStorageService service, HttpListenerResponse response)
+        {
+            if (service.ExistsAsFile(path))
+            {
+                service.SendFileInfo(path, response);
+                response.StatusCode = 200;
+            }
+            else
+            {
+                response.StatusCode = 404;
             }
         }
     }
